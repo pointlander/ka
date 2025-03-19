@@ -17,6 +17,17 @@ import (
 	"github.com/pointlander/compress"
 )
 
+// T computes the transpose
+func T(u [8 * 8]byte) [8 * 8]byte {
+	n := [8 * 8]byte{}
+	for i := 0; i < 8; i++ {
+		for j := 0; j < 8; j++ {
+			n[j*8+i] = u[i*8+j]
+		}
+	}
+	return n
+}
+
 func main() {
 	rng := rand.New(rand.NewSource(1))
 	u := [8 * 8]byte{
@@ -29,16 +40,6 @@ func main() {
 		0, 0, 0, 0, 0, 0, 0, 0,
 		0, 0, 0, 0, 0, 0, 0, 0,
 	}
-	n := func(u [8 * 8]byte) [8 * 8]byte {
-		n := [8 * 8]byte{}
-		for i := 0; i < 8; i++ {
-			for j := 0; j < 8; j++ {
-				n[j*8+i] = u[i*8+j]
-			}
-		}
-		return n
-	}
-
 	images := &gif.GIF{}
 	var palette = []color.Color{
 		color.RGBA{0, 0, 0, 0xff},
@@ -54,7 +55,7 @@ func main() {
 		var buffer bytes.Buffer
 		compress.Mark1Compress1(u[:], &buffer)
 		best := buffer.Len()
-		uu := n(u)
+		uu := T(u)
 		buffer = bytes.Buffer{}
 		compress.Mark1Compress1(uu[:], &buffer)
 		best += buffer.Len()
@@ -62,7 +63,7 @@ func main() {
 			v := u
 			a, b := rng.Intn(len(v)), rng.Intn(len(v))
 			v[a], v[b] = v[b], v[a]
-			vv := n(v)
+			vv := T(v)
 			var buffer bytes.Buffer
 			compress.Mark1Compress1(v[:], &buffer)
 			var buffer2 bytes.Buffer
@@ -77,15 +78,13 @@ func main() {
 			for j := 0; j < 8; j++ {
 				b := u[i*8+j]
 				if b != 0 {
-					maxX, maxY := j, i
-					maxX *= Scale
-					maxY *= Scale
+					xx, yy := j*Scale, i*Scale
 					for x := 0; x < Scale; x++ {
 						for y := 0; y < Scale; y++ {
 							var dx, dy float32 = Scale/2 - float32(x), Scale/2 - float32(y)
 							d := 2 * float32(math.Sqrt(float64(dx*dx+dy*dy))) / Scale
 							if d < 1 {
-								verse.Set(maxX+x, maxY+y, color.RGBA{0xff, 0xff, 0xff, 0xff})
+								verse.Set(xx+x, yy+y, color.RGBA{0xff, 0xff, 0xff, 0xff})
 							}
 						}
 					}
