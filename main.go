@@ -7,7 +7,12 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"image"
+	"image/color"
+	"image/gif"
+	"math"
 	"math/rand"
+	"os"
 
 	"github.com/pointlander/compress"
 )
@@ -33,7 +38,19 @@ func main() {
 		}
 		return n
 	}
-	for {
+
+	images := &gif.GIF{}
+	var palette = []color.Color{
+		color.RGBA{0, 0, 0, 0xff},
+		color.RGBA{0xff, 0xff, 0xff, 0xff},
+		color.RGBA{0, 0, 0xff, 0xff},
+	}
+	const (
+		Size  = 8
+		Scale = 25
+	)
+	iterations := 4096
+	for step := 0; step < iterations; step++ {
 		var buffer bytes.Buffer
 		compress.Mark1Compress1(u[:], &buffer)
 		best := buffer.Len()
@@ -55,17 +72,43 @@ func main() {
 				break
 			}
 		}
+		verse := image.NewPaletted(image.Rect(0, 0, Size*Scale, Size*Scale), palette)
 		for i := 0; i < 8; i++ {
 			for j := 0; j < 8; j++ {
 				b := u[i*8+j]
-				if b == 0 {
-					fmt.Printf("0")
-				} else {
-					fmt.Printf("1")
+				if b != 0 {
+					maxX, maxY := j, i
+					maxX *= Scale
+					maxY *= Scale
+					for x := 0; x < Scale; x++ {
+						for y := 0; y < Scale; y++ {
+							var dx, dy float32 = Scale/2 - float32(x), Scale/2 - float32(y)
+							d := 2 * float32(math.Sqrt(float64(dx*dx+dy*dy))) / Scale
+							if d < 1 {
+								verse.Set(maxX+x, maxY+y, color.RGBA{0xff, 0xff, 0xff, 0xff})
+							}
+						}
+					}
 				}
 			}
-			fmt.Println()
 		}
-		fmt.Println()
+		for x := 0; x < int(float64(step)*Size*Scale/float64(iterations)); x++ {
+			for y := Size*Scale - 10; y < Size*Scale; y++ {
+				verse.Set(x, y, color.RGBA{0, 0, 0xff, 0xff})
+			}
+		}
+		images.Image = append(images.Image, verse)
+		images.Delay = append(images.Delay, 2)
+		fmt.Println(step)
+	}
+
+	out, err := os.Create("ka.gif")
+	if err != nil {
+		panic(err)
+	}
+	defer out.Close()
+	err = gif.EncodeAll(out, images)
+	if err != nil {
+		panic(err)
 	}
 }
