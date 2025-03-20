@@ -148,7 +148,7 @@ func main() {
 				v[coord.Y*Size+coord.X], v[y*Size+x] = v[y*Size+x], v[coord.Y*Size+coord.X]
 			}
 			for _, coord := range coords {
-				x, y := coord.X+States[coord.D].X, coord.Y+States[coord.D].X
+				x, y := coord.X+States[coord.D].X, coord.Y+States[coord.D].Y
 				fitness += float64(K(v, x, y))
 			}
 			if fitness <= best {
