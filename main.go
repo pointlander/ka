@@ -17,51 +17,71 @@ import (
 	"github.com/pointlander/compress"
 )
 
-var states = [8][2]int{
-	{1, 1},
-	{1, 0},
-	{1, -1},
-	{0, -1},
-	{-1, -1},
-	{-1, 0},
-	{-1, 1},
-	{0, 1},
+const (
+	// Size is the size of the universe
+	Size = 9
+	// Scale is the scale factor for rendering
+	Scale = 25
+	// Iterations is the number of iterations
+	Iterations = 1024
+)
+
+// Coord is a coordinate
+type Coord struct {
+	X, Y int
+	D    int
 }
 
-func press(u [8 * 8]byte, x0, y0 int) int {
-	trace := []byte{u[8*y0+x0]}
-	add := func(x, y int) {
-		if x < 0 || y < 0 || x >= 8 || y >= 8 {
-			trace = append(trace, 0)
-			return
+// States are the next states
+var States = [8]Coord{
+	{1, 1, 0},
+	{1, 0, 0},
+	{1, -1, 0},
+	{0, -1, 0},
+	{-1, -1, 0},
+	{-1, 0, 0},
+	{-1, 1, 0},
+	{0, 1, 0},
+}
+
+// Circle is a circle
+var Circle []Coord
+
+func init() {
+	for x := 0; x < Size; x++ {
+		for y := 0; y < Size; y++ {
+			dx, dy := 5-x, 5-y
+			d := math.Sqrt(float64(dx*dx + dy*dy))
+			if d <= 4 {
+				Circle = append(Circle, Coord{
+					X: x - 4,
+					Y: y - 4,
+				})
+			}
 		}
-		trace = append(trace, u[8*y+x])
 	}
-	for r := 1; r < 8; r++ {
-		x, y, dx, dy := r-1, 0, 1, 1
-		err := dx - (r * 2)
+}
 
-		for x >= y {
-			add(x0+x, y0+y)
-			add(x0+y, y0+x)
-			add(x0-y, y0+x)
-			add(x0-x, y0+y)
-			add(x0-x, y0-y)
-			add(x0-y, y0-x)
-			add(x0+y, y0-x)
-			add(x0+x, y0-y)
-
-			if err <= 0 {
-				y++
-				err += dy
-				dy += 2
-			}
-			if err > 0 {
-				x--
-				dx += 2
-				err += dx - (r * 2)
-			}
+// K computes the kolmogorov complexity
+func K(p []int, u [Size * Size]byte, x0, y0 int) int {
+	trace := []byte{}
+	add := func(x, y int) {
+		if x < 0 {
+			x = Size + x
 		}
+		if y < 0 {
+			y = Size + y
+		}
+		if y >= Size {
+			y = y - Size
+		}
+		if x >= Size {
+			x = x - Size
+		}
+		trace = append(trace, u[Size*y+x])
+	}
+	for _, v := range p {
+		add(Circle[v].X+x0, Circle[v].Y+y0)
 	}
 	var buffer bytes.Buffer
 	compress.Mark1Compress1(trace, &buffer)
@@ -70,15 +90,9 @@ func press(u [8 * 8]byte, x0, y0 int) int {
 
 func main() {
 	rng := rand.New(rand.NewSource(1))
-	u := [8 * 8]byte{
-		0, 0, 0, 0, 0, 0, 0, 0,
-		0, 255, 0, 0, 0, 0, 0, 0,
-		0, 0, 0, 0, 0, 255, 0, 0,
-		0, 0, 0, 0, 0, 0, 0, 0,
-		0, 0, 0, 0, 0, 0, 0, 0,
-		0, 0, 255, 0, 0, 0, 0, 0,
-		0, 0, 0, 0, 0, 0, 0, 0,
-		0, 0, 0, 0, 0, 0, 0, 0,
+	u := [Size * Size]byte{}
+	for i := 0; i < 3; i++ {
+		u[rng.Intn(Size*Size)] = 255
 	}
 	images := &gif.GIF{}
 	var palette = []color.Color{
@@ -86,25 +100,17 @@ func main() {
 		color.RGBA{0xff, 0xff, 0xff, 0xff},
 		color.RGBA{0, 0, 0xff, 0xff},
 	}
-	const (
-		Size  = 8
-		Scale = 25
-	)
-	type Coord struct {
-		X, Y int
-		D    int
-	}
-	iterations := 128
-	for step := 0; step < iterations; step++ {
+	for step := 0; step < Iterations; step++ {
+		p := rng.Perm(len(Circle))
 		best, coords := 0, make([]Coord, 0, 8)
-		for y := 0; y < 8; y++ {
-			for x := 0; x < 8; x++ {
-				if u[y*8+x] > 0 {
-					best += press(u, x, y)
+		for y := 0; y < Size; y++ {
+			for x := 0; x < Size; x++ {
+				if u[y*Size+x] > 0 {
+					best += K(p, u, x, y)
 					coords = append(coords, Coord{
 						X: x,
 						Y: y,
-						D: rng.Intn(len(states)),
+						D: rng.Intn(len(States)),
 					})
 				}
 			}
@@ -113,55 +119,43 @@ func main() {
 			fitness := 0
 			v := u
 			for _, coord := range coords {
-				x, y := coord.X+states[coord.D][0], coord.Y+states[coord.D][1]
+				x, y := coord.X+States[coord.D].X, coord.Y+States[coord.D].Y
 				if x < 0 {
-					x = 8 + x
+					x = Size + x
 				}
 				if y < 0 {
-					y = 8 + y
+					y = Size + y
 				}
-				if y >= 8 {
-					y = y - 8
+				if y >= Size {
+					y = y - Size
 				}
-				if x >= 8 {
-					x = x - 8
+				if x >= Size {
+					x = x - Size
 				}
-				v[coord.Y*8+coord.X], v[y*8+x] = v[y*8+x], v[coord.Y*8+coord.X]
+				v[coord.Y*Size+coord.X], v[y*Size+x] = v[y*Size+x], v[coord.Y*Size+coord.X]
 			}
 			for _, coord := range coords {
-				x, y := coord.X+states[coord.D][0], coord.Y+states[coord.D][1]
-				if x < 0 {
-					x = 8 + x
-				}
-				if y < 0 {
-					y = 8 + y
-				}
-				if y >= 8 {
-					y = y - 8
-				}
-				if x >= 8 {
-					x = x - 8
-				}
-				fitness += press(v, x, y)
+				x, y := coord.X+States[coord.D].X, coord.Y+States[coord.D].X
+				fitness += K(p, v, x, y)
 			}
 			if fitness <= best {
 				u = v
 				break
 			}
 			for i := range coords {
-				coords[i].D = rng.Intn(len(states))
+				coords[i].D = rng.Intn(len(States))
 			}
 		}
 		verse := image.NewPaletted(image.Rect(0, 0, Size*Scale, Size*Scale), palette)
-		for i := 0; i < 8; i++ {
-			for j := 0; j < 8; j++ {
-				b := u[i*8+j]
+		for i := 0; i < Size; i++ {
+			for j := 0; j < Size; j++ {
+				b := u[i*Size+j]
 				if b != 0 {
 					xx, yy := j*Scale, i*Scale
 					for x := 0; x < Scale; x++ {
 						for y := 0; y < Scale; y++ {
-							var dx, dy float32 = Scale/2 - float32(x), Scale/2 - float32(y)
-							d := 2 * float32(math.Sqrt(float64(dx*dx+dy*dy))) / Scale
+							dx, dy := Scale/2-float64(x), Scale/2-float64(y)
+							d := 2 * math.Sqrt(dx*dx+dy*dy) / Scale
 							if d < 1 {
 								verse.Set(xx+x, yy+y, color.RGBA{0xff, 0xff, 0xff, 0xff})
 							}
@@ -170,14 +164,14 @@ func main() {
 				}
 			}
 		}
-		for x := 0; x < int(float64(step)*Size*Scale/float64(iterations)); x++ {
+		for x := 0; x < int(float64(step)*Size*Scale/float64(Iterations)); x++ {
 			for y := Size*Scale - 10; y < Size*Scale; y++ {
 				verse.Set(x, y, color.RGBA{0, 0, 0xff, 0xff})
 			}
 		}
 		images.Image = append(images.Image, verse)
-		images.Delay = append(images.Delay, 10)
-		fmt.Println(step)
+		images.Delay = append(images.Delay, 20)
+		fmt.Println(step, best)
 	}
 
 	out, err := os.Create("ka.gif")
