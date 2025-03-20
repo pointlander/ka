@@ -13,6 +13,7 @@ import (
 	"math"
 	"math/rand"
 	"os"
+	"sort"
 
 	"github.com/pointlander/compress"
 )
@@ -30,18 +31,19 @@ const (
 type Coord struct {
 	X, Y int
 	D    int
+	R    float64
 }
 
 // States are the next states
 var States = [8]Coord{
-	{1, 1, 0},
-	{1, 0, 0},
-	{1, -1, 0},
-	{0, -1, 0},
-	{-1, -1, 0},
-	{-1, 0, 0},
-	{-1, 1, 0},
-	{0, 1, 0},
+	{1, 1, 0, 0},
+	{1, 0, 0, 0},
+	{1, -1, 0, 0},
+	{0, -1, 0, 0},
+	{-1, -1, 0, 0},
+	{-1, 0, 0, 0},
+	{-1, 1, 0, 0},
+	{0, 1, 0, 0},
 }
 
 // Circle is a circle
@@ -56,16 +58,30 @@ func init() {
 				Circle = append(Circle, Coord{
 					X: x - 4,
 					Y: y - 4,
+					R: d,
 				})
 			}
 		}
 	}
+	sort.Slice(Circle, func(i, j int) bool {
+		if Circle[i].R < Circle[j].R {
+			return true
+		} else if Circle[i].R == Circle[j].R {
+			if Circle[i].X < Circle[j].X {
+				return true
+			} else if Circle[i].X == Circle[j].X {
+				return Circle[i].Y < Circle[j].Y
+			}
+		}
+		return false
+	})
 }
 
 // K computes the kolmogorov complexity
-func K(p []int, u [Size * Size]byte, x0, y0 int) int {
+func K(u [Size * Size]byte, x0, y0 int) int {
 	trace := []byte{}
-	add := func(x, y int) {
+	for _, v := range Circle {
+		x, y := v.X+x0, v.Y+y0
 		if x < 0 {
 			x = Size + x
 		}
@@ -80,9 +96,7 @@ func K(p []int, u [Size * Size]byte, x0, y0 int) int {
 		}
 		trace = append(trace, u[Size*y+x])
 	}
-	for _, v := range p {
-		add(Circle[v].X+x0, Circle[v].Y+y0)
-	}
+
 	var buffer bytes.Buffer
 	compress.Mark1Compress1(trace, &buffer)
 	return buffer.Len()
@@ -101,17 +115,11 @@ func main() {
 		color.RGBA{0, 0, 0xff, 0xff},
 	}
 	for step := 0; step < Iterations; step++ {
-		projections := make([][]int, 33)
-		for i := range projections {
-			projections[i] = rng.Perm(len(Circle))
-		}
 		best, coords := 00., make([]Coord, 0, 8)
 		for y := 0; y < Size; y++ {
 			for x := 0; x < Size; x++ {
 				if u[y*Size+x] > 0 {
-					for i := range projections {
-						best += float64(K(projections[i], u, x, y))
-					}
+					best += float64(K(u, x, y))
 					coords = append(coords, Coord{
 						X: x,
 						Y: y,
@@ -120,7 +128,6 @@ func main() {
 				}
 			}
 		}
-		best /= float64(len(projections))
 		for {
 			fitness := 0.0
 			v := u
@@ -142,11 +149,8 @@ func main() {
 			}
 			for _, coord := range coords {
 				x, y := coord.X+States[coord.D].X, coord.Y+States[coord.D].X
-				for i := range projections {
-					fitness += float64(K(projections[i], v, x, y))
-				}
+				fitness += float64(K(v, x, y))
 			}
-			fitness /= float64(len(projections))
 			if fitness <= best {
 				u = v
 				break
