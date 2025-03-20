@@ -101,12 +101,17 @@ func main() {
 		color.RGBA{0, 0, 0xff, 0xff},
 	}
 	for step := 0; step < Iterations; step++ {
-		p := rng.Perm(len(Circle))
-		best, coords := 0, make([]Coord, 0, 8)
+		projections := make([][]int, 33)
+		for i := range projections {
+			projections[i] = rng.Perm(len(Circle))
+		}
+		best, coords := 00., make([]Coord, 0, 8)
 		for y := 0; y < Size; y++ {
 			for x := 0; x < Size; x++ {
 				if u[y*Size+x] > 0 {
-					best += K(p, u, x, y)
+					for i := range projections {
+						best += float64(K(projections[i], u, x, y))
+					}
 					coords = append(coords, Coord{
 						X: x,
 						Y: y,
@@ -115,8 +120,9 @@ func main() {
 				}
 			}
 		}
+		best /= float64(len(projections))
 		for {
-			fitness := 0
+			fitness := 0.0
 			v := u
 			for _, coord := range coords {
 				x, y := coord.X+States[coord.D].X, coord.Y+States[coord.D].Y
@@ -136,8 +142,11 @@ func main() {
 			}
 			for _, coord := range coords {
 				x, y := coord.X+States[coord.D].X, coord.Y+States[coord.D].X
-				fitness += K(p, v, x, y)
+				for i := range projections {
+					fitness += float64(K(projections[i], v, x, y))
+				}
 			}
+			fitness /= float64(len(projections))
 			if fitness <= best {
 				u = v
 				break
