@@ -17,15 +17,55 @@ import (
 	"github.com/pointlander/compress"
 )
 
-// T computes the transpose
-func T(u [8 * 8]byte) [8 * 8]byte {
-	n := [8 * 8]byte{}
-	for i := 0; i < 8; i++ {
-		for j := 0; j < 8; j++ {
-			n[j*8+i] = u[i*8+j]
+var states = [8][2]int{
+	{1, 1},
+	{1, 0},
+	{1, -1},
+	{0, -1},
+	{-1, -1},
+	{-1, 0},
+	{-1, 1},
+	{0, 1},
+}
+
+func press(u [8 * 8]byte, x0, y0 int) int {
+	trace := []byte{u[8*y0+x0]}
+	add := func(x, y int) {
+		if x < 0 || y < 0 || x >= 8 || y >= 8 {
+			trace = append(trace, 0)
+			return
+		}
+		trace = append(trace, u[8*y+x])
+	}
+	for r := 1; r < 8; r++ {
+		x, y, dx, dy := r-1, 0, 1, 1
+		err := dx - (r * 2)
+
+		for x >= y {
+			add(x0+x, y0+y)
+			add(x0+y, y0+x)
+			add(x0-y, y0+x)
+			add(x0-x, y0+y)
+			add(x0-x, y0-y)
+			add(x0-y, y0-x)
+			add(x0+y, y0-x)
+			add(x0+x, y0-y)
+
+			if err <= 0 {
+				y++
+				err += dy
+				dy += 2
+			}
+			if err > 0 {
+				x--
+				dx += 2
+				err += dx - (r * 2)
+			}
 		}
 	}
-	return n
+	var buffer bytes.Buffer
+	compress.Mark1Compress1(trace, &buffer)
+	return buffer.Len()
 }
 
 func main() {
@@ -50,27 +90,66 @@ func main() {
 		Size  = 8
 		Scale = 25
 	)
-	iterations := 4096
+	type Coord struct {
+		X, Y int
+		D    int
+	}
+	iterations := 128
 	for step := 0; step < iterations; step++ {
-		var buffer bytes.Buffer
-		compress.Mark1Compress1(u[:], &buffer)
-		best := buffer.Len()
-		uu := T(u)
-		buffer = bytes.Buffer{}
-		compress.Mark1Compress1(uu[:], &buffer)
-		best += buffer.Len()
+		best, coords := 0, make([]Coord, 0, 8)
+		for y := 0; y < 8; y++ {
+			for x := 0; x < 8; x++ {
+				if u[y*8+x] > 0 {
+					best += press(u, x, y)
+					coords = append(coords, Coord{
+						X: x,
+						Y: y,
+						D: rng.Intn(len(states)),
+					})
+				}
+			}
+		}
 		for {
+			fitness := 0
 			v := u
-			a, b := rng.Intn(len(v)), rng.Intn(len(v))
-			v[a], v[b] = v[b], v[a]
-			vv := T(v)
-			var buffer bytes.Buffer
-			compress.Mark1Compress1(v[:], &buffer)
-			var buffer2 bytes.Buffer
-			compress.Mark1Compress1(vv[:], &buffer2)
-			if buffer.Len()+buffer2.Len() <= best {
+			for _, coord := range coords {
+				x, y := coord.X+states[coord.D][0], coord.Y+states[coord.D][1]
+				if x < 0 {
+					x = 8 + x
+				}
+				if y < 0 {
+					y = 8 + y
+				}
+				if y >= 8 {
+					y = y - 8
+				}
+				if x >= 8 {
+					x = x - 8
+				}
+				v[coord.Y*8+coord.X], v[y*8+x] = v[y*8+x], v[coord.Y*8+coord.X]
+			}
+			for _, coord := range coords {
+				x, y := coord.X+states[coord.D][0], coord.Y+states[coord.D][1]
+				if x < 0 {
+					x = 8 + x
+				}
+				if y < 0 {
+					y = 8 + y
+				}
+				if y >= 8 {
+					y = y - 8
+				}
+				if x >= 8 {
+					x = x - 8
+				}
+				fitness += press(v, x, y)
+			}
+			if fitness <= best {
 				u = v
 				break
+			}
+			for i := range coords {
+				coords[i].D = rng.Intn(len(states))
 			}
 		}
 		verse := image.NewPaletted(image.Rect(0, 0, Size*Scale, Size*Scale), palette)
@@ -97,7 +176,7 @@ func main() {
 			}
 		}
 		images.Image = append(images.Image, verse)
-		images.Delay = append(images.Delay, 2)
+		images.Delay = append(images.Delay, 10)
 		fmt.Println(step)
 	}
 
