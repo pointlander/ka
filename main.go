@@ -80,7 +80,7 @@ func R(x float64) int {
 }
 
 // K computes the kolmogorov complexity
-func K(u [Size * Size]byte, x0, y0 float64) int {
+func K(qv [Size * Size]byte, u [Size * Size]byte, x0, y0 float64) int {
 	trace := []byte{}
 	for _, v := range Circle {
 		x, y := v.X[0]+x0, v.X[1]+y0
@@ -96,7 +96,11 @@ func K(u [Size * Size]byte, x0, y0 float64) int {
 		for R(y) >= Size {
 			y = y - Size
 		}
-		trace = append(trace, u[Size*R(y)+R(x)])
+		if qv[Size*R(y)+R(x)] > 0 || u[Size*R(y)+R(x)] > 0 {
+			trace = append(trace, 255)
+		} else {
+			trace = append(trace, 0)
+		}
 	}
 
 	var buffer bytes.Buffer
@@ -107,6 +111,7 @@ func K(u [Size * Size]byte, x0, y0 float64) int {
 func main() {
 	rng := rand.New(rand.NewSource(1))
 	u := [Size * Size]byte{}
+	qv := [Size * Size]byte{}
 	for i := 0; i < 9; i++ {
 		u[rng.Intn(Size*Size)] = 255
 	}
@@ -120,7 +125,7 @@ func main() {
 	for y := 0; y < Size; y++ {
 		for x := 0; x < Size; x++ {
 			if u[y*Size+x] > 0 {
-				best += float64(K(u, float64(x), float64(y)))
+				best += float64(K(qv, u, float64(x), float64(y)))
 				coords = append(coords, Coord{
 					X:      [2]float64{float64(x), float64(y)},
 					Avg:    [2]float64{0, 0},
@@ -131,6 +136,10 @@ func main() {
 	}
 	for step := 0; step < Iterations; step++ {
 		for j := 0; j < 256; j++ {
+			qv := [Size * Size]byte{}
+			for i := 0; i < 3; i++ {
+				qv[rng.Intn(Size*Size)] = 255
+			}
 			fitness := 0.0
 			v := u
 			for i, coord := range coords {
@@ -153,7 +162,7 @@ func main() {
 					v[R(y)*Size+R(x)], v[R(coord.X[1])*Size+R(coord.X[0])]
 			}
 			for _, coord := range coords {
-				fitness += float64(K(v, coord.S[0], coord.S[1]))
+				fitness += float64(K(qv, v, coord.S[0], coord.S[1]))
 			}
 			if fitness <= best {
 				for i := range coords {
