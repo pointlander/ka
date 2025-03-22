@@ -25,7 +25,7 @@ const (
 	// Scale is the scale factor for rendering
 	Scale = 25
 	// Iterations is the number of iterations
-	Iterations = 1024
+	Iterations = 256
 )
 
 func Mark1Compress1(input []byte, output io.Writer) {
@@ -38,21 +38,11 @@ func Mark1Compress1(input []byte, output io.Writer) {
 
 // Coord is a coordinate
 type Coord struct {
-	X, Y int
-	D    int
-	R    float64
-}
-
-// States are the next states
-var States = [8]Coord{
-	{1, 1, 0, 0},
-	{1, 0, 0, 0},
-	{1, -1, 0, 0},
-	{0, -1, 0, 0},
-	{-1, -1, 0, 0},
-	{-1, 0, 0, 0},
-	{-1, 1, 0, 0},
-	{0, 1, 0, 0},
+	X      [2]float64
+	Avg    [2]float64
+	Stddev [2]float64
+	S      [2]float64
+	R      float64
 }
 
 // Circle is a circle
@@ -65,8 +55,7 @@ func init() {
 			d := math.Sqrt(float64(dx*dx + dy*dy))
 			if d <= 4 {
 				Circle = append(Circle, Coord{
-					X: x - 4,
-					Y: y - 4,
+					X: [2]float64{float64(x - 4), float64(y - 4)},
 					R: d,
 				})
 			}
@@ -76,34 +65,38 @@ func init() {
 		if Circle[i].R < Circle[j].R {
 			return true
 		} else if Circle[i].R == Circle[j].R {
-			if Circle[i].X < Circle[j].X {
+			if Circle[i].X[0] < Circle[j].X[0] {
 				return true
-			} else if Circle[i].X == Circle[j].X {
-				return Circle[i].Y < Circle[j].Y
+			} else if Circle[i].X[0] == Circle[j].X[0] {
+				return Circle[i].X[1] < Circle[j].X[1]
 			}
 		}
 		return false
 	})
 }
 
+func R(x float64) int {
+	return int(math.Round(x))
+}
+
 // K computes the kolmogorov complexity
-func K(u [Size * Size]byte, x0, y0 int) int {
+func K(u [Size * Size]byte, x0, y0 float64) int {
 	trace := []byte{}
 	for _, v := range Circle {
-		x, y := v.X+x0, v.Y+y0
-		if x < 0 {
+		x, y := v.X[0]+x0, v.X[1]+y0
+		for R(x) < 0 {
 			x = Size + x
 		}
-		if y < 0 {
+		for R(y) < 0 {
 			y = Size + y
 		}
-		if y >= Size {
-			y = y - Size
-		}
-		if x >= Size {
+		for R(x) >= Size {
 			x = x - Size
 		}
-		trace = append(trace, u[Size*y+x])
+		for R(y) >= Size {
+			y = y - Size
+		}
+		trace = append(trace, u[Size*R(y)+R(x)])
 	}
 
 	var buffer bytes.Buffer
@@ -114,7 +107,7 @@ func K(u [Size * Size]byte, x0, y0 int) int {
 func main() {
 	rng := rand.New(rand.NewSource(1))
 	u := [Size * Size]byte{}
-	for i := 0; i < 3; i++ {
+	for i := 0; i < 9; i++ {
 		u[rng.Intn(Size*Size)] = 255
 	}
 	images := &gif.GIF{}
@@ -123,49 +116,52 @@ func main() {
 		color.RGBA{0xff, 0xff, 0xff, 0xff},
 		color.RGBA{0, 0, 0xff, 0xff},
 	}
-	for step := 0; step < Iterations; step++ {
-		best, coords := 00., make([]Coord, 0, 8)
-		for y := 0; y < Size; y++ {
-			for x := 0; x < Size; x++ {
-				if u[y*Size+x] > 0 {
-					best += float64(K(u, x, y))
-					coords = append(coords, Coord{
-						X: x,
-						Y: y,
-						D: rng.Intn(len(States)),
-					})
-				}
+	best, coords := 0.0, make([]Coord, 0, 8)
+	for y := 0; y < Size; y++ {
+		for x := 0; x < Size; x++ {
+			if u[y*Size+x] > 0 {
+				best += float64(K(u, float64(x), float64(y)))
+				coords = append(coords, Coord{
+					X:      [2]float64{float64(x), float64(y)},
+					Avg:    [2]float64{0, 0},
+					Stddev: [2]float64{float64(4), float64(4)},
+				})
 			}
 		}
-		for {
+	}
+	for step := 0; step < Iterations; step++ {
+		for j := 0; j < 256; j++ {
 			fitness := 0.0
 			v := u
-			for _, coord := range coords {
-				x, y := coord.X+States[coord.D].X, coord.Y+States[coord.D].Y
-				if x < 0 {
+			for i, coord := range coords {
+				x, y := coord.X[0]+rng.NormFloat64()*coord.Stddev[0]+coord.Avg[0],
+					coord.X[1]+rng.NormFloat64()*coord.Stddev[1]+coord.Avg[1]
+				for R(x) < 0 {
 					x = Size + x
 				}
-				if y < 0 {
+				for R(y) < 0 {
 					y = Size + y
 				}
-				if y >= Size {
+				for R(y) >= Size {
 					y = y - Size
 				}
-				if x >= Size {
+				for R(x) >= Size {
 					x = x - Size
 				}
-				v[coord.Y*Size+coord.X], v[y*Size+x] = v[y*Size+x], v[coord.Y*Size+coord.X]
+				coords[i].S[0], coords[i].S[1] = x, y
+				v[R(coord.X[1])*Size+R(coord.X[0])], v[R(y)*Size+R(x)] =
+					v[R(y)*Size+R(x)], v[R(coord.X[1])*Size+R(coord.X[0])]
 			}
 			for _, coord := range coords {
-				x, y := coord.X+States[coord.D].X, coord.Y+States[coord.D].Y
-				fitness += float64(K(v, x, y))
+				fitness += float64(K(v, coord.S[0], coord.S[1]))
 			}
 			if fitness <= best {
+				for i := range coords {
+					coords[i].X = coords[i].S
+				}
 				u = v
+				best = fitness
 				break
-			}
-			for i := range coords {
-				coords[i].D = rng.Intn(len(States))
 			}
 		}
 		verse := image.NewPaletted(image.Rect(0, 0, Size*Scale, Size*Scale), palette)
