@@ -10,6 +10,7 @@ import (
 	"image"
 	"image/color"
 	"image/gif"
+	"io"
 	"math"
 	"math/rand"
 	"os"
@@ -26,6 +27,14 @@ const (
 	// Iterations is the number of iterations
 	Iterations = 1024
 )
+
+func Mark1Compress1(input []byte, output io.Writer) {
+	data, channel := make([]byte, len(input)), make(chan []byte, 1)
+	copy(data, input)
+	channel <- data
+	close(channel)
+	compress.BijectiveBurrowsWheelerCoder(channel).MoveToFrontCoder().FilteredAdaptiveBitCoder().CodeBit(output)
+}
 
 // Coord is a coordinate
 type Coord struct {
@@ -98,7 +107,7 @@ func K(u [Size * Size]byte, x0, y0 int) int {
 	}
 
 	var buffer bytes.Buffer
-	compress.Mark1Compress1(trace, &buffer)
+	Mark1Compress1(trace, &buffer)
 	return buffer.Len()
 }
 
