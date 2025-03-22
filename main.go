@@ -39,11 +39,8 @@ func Mark1Compress1(input []byte, output io.Writer) {
 
 // Coord is a coordinate
 type Coord struct {
-	X      [2]float64
-	Avg    [2]float64
-	Stddev [2]float64
-	S      [2]float64
-	R      float64
+	X [2]int
+	R float64
 }
 
 // Circle is a circle
@@ -56,7 +53,7 @@ func init() {
 			d := math.Sqrt(float64(dx*dx + dy*dy))
 			if d <= 4 {
 				Circle = append(Circle, Coord{
-					X: [2]float64{float64(x - 4), float64(y - 4)},
+					X: [2]int{x - 4, y - 4},
 					R: d,
 				})
 			}
@@ -76,44 +73,11 @@ func init() {
 	})
 }
 
-func R(x float64) int {
-	return int(math.Round(x))
-}
-
 // K computes the kolmogorov complexity
-func K(qv [Size * Size]byte, u [Size * Size]byte, x0, y0 float64) int {
+func K(u [Size * Size]byte, x0, y0 int) int {
 	trace := []byte{}
 	for _, v := range Circle {
 		x, y := v.X[0]+x0, v.X[1]+y0
-		for R(x) < 0 {
-			x = Size + x
-		}
-		for R(y) < 0 {
-			y = Size + y
-		}
-		for R(x) >= Size {
-			x = x - Size
-		}
-		for R(y) >= Size {
-			y = y - Size
-		}
-		if qv[Size*R(y)+R(x)] > 0 || u[Size*R(y)+R(x)] > 0 {
-			trace = append(trace, 255)
-		} else {
-			trace = append(trace, 0)
-		}
-	}
-
-	var buffer bytes.Buffer
-	Mark1Compress1(trace, &buffer)
-	return buffer.Len()
-}
-
-// DK computes the kolmogorov complexity
-func DK(u [Size * Size]byte, x0, y0 int) int {
-	trace := []byte{}
-	for _, v := range Circle {
-		x, y := int(v.X[0])+x0, int(v.X[1])+y0
 		for x < 0 {
 			x = Size + x
 		}
@@ -154,10 +118,10 @@ func Capitalistic() {
 			ax, ay, bx, by := rng.Intn(Size), rng.Intn(Size), rng.Intn(Size), rng.Intn(Size)
 			v := u
 			v[ay*Size+ax], v[by*Size+bx] = v[by*Size+bx], v[ay*Size+ax]
-			againBefore := DK(u, ax, ay)
-			bgainBefore := DK(u, bx, by)
-			againAfter := DK(v, ax, ay)
-			bgainAfter := DK(v, bx, by)
+			againBefore := K(u, ax, ay)
+			bgainBefore := K(u, bx, by)
+			againAfter := K(v, ax, ay)
+			bgainAfter := K(v, bx, by)
 			if againAfter < againBefore && bgainAfter < bgainBefore {
 				u = v
 				break
@@ -207,7 +171,6 @@ func Capitalistic() {
 func Communistic() {
 	rng := rand.New(rand.NewSource(1))
 	u := [Size * Size]byte{}
-	qv := [Size * Size]byte{}
 	for i := 0; i < 9; i++ {
 		u[rng.Intn(Size*Size)] = 255
 	}
@@ -217,55 +180,27 @@ func Communistic() {
 		color.RGBA{0xff, 0xff, 0xff, 0xff},
 		color.RGBA{0, 0, 0xff, 0xff},
 	}
-	best, coords := 0.0, make([]Coord, 0, 8)
-	for y := 0; y < Size; y++ {
-		for x := 0; x < Size; x++ {
-			if u[y*Size+x] > 0 {
-				best += float64(K(qv, u, float64(x), float64(y)))
-				coords = append(coords, Coord{
-					X:      [2]float64{float64(x), float64(y)},
-					Avg:    [2]float64{0, 0},
-					Stddev: [2]float64{float64(4), float64(4)},
-				})
-			}
-		}
-	}
+	best := 0
 	for step := 0; step < Iterations; step++ {
 		for j := 0; j < 256; j++ {
-			fitness := 0.0
+			ax, ay, bx, by := rng.Intn(Size), rng.Intn(Size), rng.Intn(Size), rng.Intn(Size)
 			v := u
-			for i, coord := range coords {
-				x, y := coord.X[0]+rng.NormFloat64()*coord.Stddev[0]+coord.Avg[0],
-					coord.X[1]+rng.NormFloat64()*coord.Stddev[1]+coord.Avg[1]
-				for R(x) < 0 {
-					x = Size + x
+			v[ay*Size+ax], v[by*Size+bx] = v[by*Size+bx], v[ay*Size+ax]
+			before := 0
+			for y := 0; y < Size; y++ {
+				for x := 0; x < Size; x++ {
+					before += K(u, x, y)
 				}
-				for R(y) < 0 {
-					y = Size + y
-				}
-				for R(y) >= Size {
-					y = y - Size
-				}
-				for R(x) >= Size {
-					x = x - Size
-				}
-				coords[i].S[0], coords[i].S[1] = x, y
-				v[R(coord.X[1])*Size+R(coord.X[0])], v[R(y)*Size+R(x)] =
-					v[R(y)*Size+R(x)], v[R(coord.X[1])*Size+R(coord.X[0])]
 			}
-			for _, coord := range coords {
-				qv := [Size * Size]byte{}
-				for i := 0; i < 3; i++ {
-					qv[rng.Intn(Size*Size)] = 255
+			after := 0
+			for y := 0; y < Size; y++ {
+				for x := 0; x < Size; x++ {
+					after += K(v, x, y)
 				}
-				fitness += float64(K(qv, v, coord.S[0], coord.S[1]))
 			}
-			if fitness <= best {
-				for i := range coords {
-					coords[i].X = coords[i].S
-				}
+			if after < before {
+				best = after
 				u = v
-				best = fitness
 				break
 			}
 		}
