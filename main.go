@@ -6,6 +6,7 @@ package main
 
 import (
 	"bytes"
+	"flag"
 	"fmt"
 	"image"
 	"image/color"
@@ -108,7 +109,102 @@ func K(qv [Size * Size]byte, u [Size * Size]byte, x0, y0 float64) int {
 	return buffer.Len()
 }
 
-func main() {
+// DK computes the kolmogorov complexity
+func DK(u [Size * Size]byte, x0, y0 int) int {
+	trace := []byte{}
+	for _, v := range Circle {
+		x, y := int(v.X[0])+x0, int(v.X[1])+y0
+		for x < 0 {
+			x = Size + x
+		}
+		for y < 0 {
+			y = Size + y
+		}
+		for x >= Size {
+			x = x - Size
+		}
+		for y >= Size {
+			y = y - Size
+		}
+		trace = append(trace, u[Size*y+x])
+	}
+
+	var buffer bytes.Buffer
+	Mark1Compress1(trace, &buffer)
+	return buffer.Len()
+}
+
+// Capitalistic mode
+func Capitalistic() {
+	rng := rand.New(rand.NewSource(1))
+	u := [Size * Size]byte{}
+	for i := 0; i < 9; i++ {
+		u[rng.Intn(Size*Size)] = 255
+	}
+
+	images := &gif.GIF{}
+	var palette = []color.Color{
+		color.RGBA{0, 0, 0, 0xff},
+		color.RGBA{0xff, 0xff, 0xff, 0xff},
+		color.RGBA{0, 0, 0xff, 0xff},
+	}
+
+	for step := 0; step < Iterations; step++ {
+		for {
+			ax, ay, bx, by := rng.Intn(Size), rng.Intn(Size), rng.Intn(Size), rng.Intn(Size)
+			v := u
+			v[ay*Size+ax], v[by*Size+bx] = v[by*Size+bx], v[ay*Size+ax]
+			againBefore := DK(u, ax, ay)
+			bgainBefore := DK(u, bx, by)
+			againAfter := DK(v, ax, ay)
+			bgainAfter := DK(v, bx, by)
+			if againAfter < againBefore && bgainAfter < bgainBefore {
+				u = v
+				break
+			}
+		}
+
+		verse := image.NewPaletted(image.Rect(0, 0, Size*Scale, Size*Scale), palette)
+		for i := 0; i < Size; i++ {
+			for j := 0; j < Size; j++ {
+				b := u[i*Size+j]
+				if b != 0 {
+					xx, yy := j*Scale, i*Scale
+					for x := 0; x < Scale; x++ {
+						for y := 0; y < Scale; y++ {
+							dx, dy := Scale/2-float64(x), Scale/2-float64(y)
+							d := 2 * math.Sqrt(dx*dx+dy*dy) / Scale
+							if d < 1 {
+								verse.Set(xx+x, yy+y, color.RGBA{0xff, 0xff, 0xff, 0xff})
+							}
+						}
+					}
+				}
+			}
+		}
+		for x := 0; x < int(float64(step)*Size*Scale/float64(Iterations)); x++ {
+			for y := Size*Scale - 10; y < Size*Scale; y++ {
+				verse.Set(x, y, color.RGBA{0, 0, 0xff, 0xff})
+			}
+		}
+		images.Image = append(images.Image, verse)
+		images.Delay = append(images.Delay, 20)
+		fmt.Println(step)
+	}
+
+	out, err := os.Create("capitalistic.gif")
+	if err != nil {
+		panic(err)
+	}
+	defer out.Close()
+	err = gif.EncodeAll(out, images)
+	if err != nil {
+		panic(err)
+	}
+}
+
+// Communistic model
+func Communistic() {
 	rng := rand.New(rand.NewSource(1))
 	u := [Size * Size]byte{}
 	qv := [Size * Size]byte{}
@@ -201,7 +297,7 @@ func main() {
 		fmt.Println(step, best)
 	}
 
-	out, err := os.Create("ka.gif")
+	out, err := os.Create("communistic.gif")
 	if err != nil {
 		panic(err)
 	}
@@ -209,5 +305,26 @@ func main() {
 	err = gif.EncodeAll(out, images)
 	if err != nil {
 		panic(err)
+	}
+}
+
+var (
+	// FlagCapitalistic capitalistic model
+	FlagCapitalistic = flag.Bool("capitalistic", false, "capitalistic mode")
+	// FlagCommunistic communistic model
+	FlagCommunistic = flag.Bool("communistic", false, "communistic model")
+)
+
+func main() {
+	flag.Parse()
+
+	if *FlagCapitalistic {
+		Capitalistic()
+		return
+	}
+
+	if *FlagCommunistic {
+		Communistic()
+		return
 	}
 }

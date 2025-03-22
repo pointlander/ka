@@ -1,1 +1,2 @@
-![simulation](ka.gif?raw=true)
+![simulation](capitalistic.gif?raw=true)
+![simulation](communistic.gif?raw=true)
