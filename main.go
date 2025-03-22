@@ -136,10 +136,6 @@ func main() {
 	}
 	for step := 0; step < Iterations; step++ {
 		for j := 0; j < 256; j++ {
-			qv := [Size * Size]byte{}
-			for i := 0; i < 3; i++ {
-				qv[rng.Intn(Size*Size)] = 255
-			}
 			fitness := 0.0
 			v := u
 			for i, coord := range coords {
@@ -162,6 +158,10 @@ func main() {
 					v[R(y)*Size+R(x)], v[R(coord.X[1])*Size+R(coord.X[0])]
 			}
 			for _, coord := range coords {
+				qv := [Size * Size]byte{}
+				for i := 0; i < 3; i++ {
+					qv[rng.Intn(Size*Size)] = 255
+				}
 				fitness += float64(K(qv, v, coord.S[0], coord.S[1]))
 			}
 			if fitness <= best {
