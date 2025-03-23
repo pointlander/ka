@@ -98,8 +98,8 @@ func K(u [Size * Size]byte, x0, y0 int) int {
 	return buffer.Len()
 }
 
-// Capitalistic mode
-func Capitalistic() {
+// U is a universe simulator
+func U(filename string, next func(v [Size * Size]byte, rng *rand.Rand) [Size * Size]byte) {
 	rng := rand.New(rand.NewSource(1))
 	u := [Size * Size]byte{}
 	for i := 0; i < 9; i++ {
@@ -114,20 +114,7 @@ func Capitalistic() {
 	}
 
 	for step := 0; step < Iterations; step++ {
-		for {
-			ax, ay, bx, by := rng.Intn(Size), rng.Intn(Size), rng.Intn(Size), rng.Intn(Size)
-			v := u
-			v[ay*Size+ax], v[by*Size+bx] = v[by*Size+bx], v[ay*Size+ax]
-			againBefore := K(u, ax, ay)
-			bgainBefore := K(u, bx, by)
-			againAfter := K(v, ax, ay)
-			bgainAfter := K(v, bx, by)
-			if againAfter < againBefore && bgainAfter < bgainBefore {
-				u = v
-				break
-			}
-		}
-
+		u = next(u, rng)
 		verse := image.NewPaletted(image.Rect(0, 0, Size*Scale, Size*Scale), palette)
 		for i := 0; i < Size; i++ {
 			for j := 0; j < Size; j++ {
@@ -156,7 +143,7 @@ func Capitalistic() {
 		fmt.Println(step)
 	}
 
-	out, err := os.Create("capitalistic.gif")
+	out, err := os.Create(filename)
 	if err != nil {
 		panic(err)
 	}
@@ -165,23 +152,32 @@ func Capitalistic() {
 	if err != nil {
 		panic(err)
 	}
+
+}
+
+// Capitalistic mode
+func Capitalistic() {
+	U("capitalistic.gif", func(u [Size * Size]byte, rng *rand.Rand) [Size * Size]byte {
+		for {
+			ax, ay, bx, by := rng.Intn(Size), rng.Intn(Size), rng.Intn(Size), rng.Intn(Size)
+			v := u
+			v[ay*Size+ax], v[by*Size+bx] = v[by*Size+bx], v[ay*Size+ax]
+			aBefore := K(u, ax, ay)
+			bBefore := K(u, bx, by)
+			aAfter := K(v, ax, ay)
+			bAfter := K(v, bx, by)
+			if aAfter < aBefore && bAfter < bBefore {
+				u = v
+				break
+			}
+		}
+		return u
+	})
 }
 
 // Communistic model
 func Communistic() {
-	rng := rand.New(rand.NewSource(1))
-	u := [Size * Size]byte{}
-	for i := 0; i < 9; i++ {
-		u[rng.Intn(Size*Size)] = 255
-	}
-	images := &gif.GIF{}
-	var palette = []color.Color{
-		color.RGBA{0, 0, 0, 0xff},
-		color.RGBA{0xff, 0xff, 0xff, 0xff},
-		color.RGBA{0, 0, 0xff, 0xff},
-	}
-	best := 0
-	for step := 0; step < Iterations; step++ {
+	U("communistic.gif", func(u [Size * Size]byte, rng *rand.Rand) [Size * Size]byte {
 		for j := 0; j < 256; j++ {
 			ax, ay, bx, by := rng.Intn(Size), rng.Intn(Size), rng.Intn(Size), rng.Intn(Size)
 			v := u
@@ -199,48 +195,12 @@ func Communistic() {
 				}
 			}
 			if after < before {
-				best = after
 				u = v
 				break
 			}
 		}
-		verse := image.NewPaletted(image.Rect(0, 0, Size*Scale, Size*Scale), palette)
-		for i := 0; i < Size; i++ {
-			for j := 0; j < Size; j++ {
-				b := u[i*Size+j]
-				if b != 0 {
-					xx, yy := j*Scale, i*Scale
-					for x := 0; x < Scale; x++ {
-						for y := 0; y < Scale; y++ {
-							dx, dy := Scale/2-float64(x), Scale/2-float64(y)
-							d := 2 * math.Sqrt(dx*dx+dy*dy) / Scale
-							if d < 1 {
-								verse.Set(xx+x, yy+y, color.RGBA{0xff, 0xff, 0xff, 0xff})
-							}
-						}
-					}
-				}
-			}
-		}
-		for x := 0; x < int(float64(step)*Size*Scale/float64(Iterations)); x++ {
-			for y := Size*Scale - 10; y < Size*Scale; y++ {
-				verse.Set(x, y, color.RGBA{0, 0, 0xff, 0xff})
-			}
-		}
-		images.Image = append(images.Image, verse)
-		images.Delay = append(images.Delay, 20)
-		fmt.Println(step, best)
-	}
-
-	out, err := os.Create("communistic.gif")
-	if err != nil {
-		panic(err)
-	}
-	defer out.Close()
-	err = gif.EncodeAll(out, images)
-	if err != nil {
-		panic(err)
-	}
+		return u
+	})
 }
 
 var (
