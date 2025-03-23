@@ -222,4 +222,7 @@ func main() {
 		Communistic()
 		return
 	}
+
+	iris := Load()
+	fmt.Println(len(iris))
 }
