@@ -46,53 +46,55 @@ type Coord struct {
 }
 
 // Circle is a circle
-var Circle []Coord
+type Circle []Coord
 
-func init() {
-	for x := 0; x < Size; x++ {
-		for y := 0; y < Size; y++ {
-			dx, dy := 5-x, 5-y
+func NewCircle(size int) Circle {
+	circle := make([]Coord, 0, 8)
+	for x := 0; x < size; x++ {
+		for y := 0; y < size; y++ {
+			dx, dy := (size/2+1)-x, (size/2+1)-y
 			d := math.Sqrt(float64(dx*dx + dy*dy))
 			if d <= 4 {
-				Circle = append(Circle, Coord{
-					X: [2]int{x - 4, y - 4},
+				circle = append(circle, Coord{
+					X: [2]int{x - size/2, y - size/2},
 					R: d,
 				})
 			}
 		}
 	}
-	sort.Slice(Circle, func(i, j int) bool {
-		if Circle[i].R < Circle[j].R {
+	sort.Slice(circle, func(i, j int) bool {
+		if circle[i].R < circle[j].R {
 			return true
-		} else if Circle[i].R == Circle[j].R {
-			if Circle[i].X[0] < Circle[j].X[0] {
+		} else if circle[i].R == circle[j].R {
+			if circle[i].X[0] < circle[j].X[0] {
 				return true
-			} else if Circle[i].X[0] == Circle[j].X[0] {
-				return Circle[i].X[1] < Circle[j].X[1]
+			} else if circle[i].X[0] == circle[j].X[0] {
+				return circle[i].X[1] < circle[j].X[1]
 			}
 		}
 		return false
 	})
+	return circle
 }
 
 // K computes the kolmogorov complexity
-func K(u [Size * Size]byte, x0, y0 int) int {
+func (c Circle) K(size int, u []byte, x0, y0 int) int {
 	trace := []byte{}
-	for _, v := range Circle {
+	for _, v := range c {
 		x, y := v.X[0]+x0, v.X[1]+y0
 		for x < 0 {
-			x = Size + x
+			x = size + x
 		}
 		for y < 0 {
-			y = Size + y
+			y = size + y
 		}
-		for x >= Size {
+		for x >= size {
 			x = x - Size
 		}
-		for y >= Size {
+		for y >= size {
 			y = y - Size
 		}
-		trace = append(trace, u[Size*y+x])
+		trace = append(trace, u[size*y+x])
 	}
 
 	var buffer bytes.Buffer
@@ -101,11 +103,11 @@ func K(u [Size * Size]byte, x0, y0 int) int {
 }
 
 // U is a universe simulator
-func U(filename string, next func(v [Size * Size]byte, rng *rand.Rand) [Size * Size]byte) {
+func U(filename string, size int, next func(v []byte, rng *rand.Rand) []byte) {
 	rng := rand.New(rand.NewSource(1))
-	u := [Size * Size]byte{}
+	u := make([]byte, size*size)
 	for i := 0; i < 9; i++ {
-		u[rng.Intn(Size*Size)] = 255
+		u[rng.Intn(len(u))] = 255
 	}
 
 	images := &gif.GIF{}
@@ -117,10 +119,10 @@ func U(filename string, next func(v [Size * Size]byte, rng *rand.Rand) [Size * S
 
 	for step := 0; step < Iterations; step++ {
 		u = next(u, rng)
-		verse := image.NewPaletted(image.Rect(0, 0, Size*Scale, Size*Scale), palette)
-		for i := 0; i < Size; i++ {
-			for j := 0; j < Size; j++ {
-				b := u[i*Size+j]
+		verse := image.NewPaletted(image.Rect(0, 0, size*Scale, size*Scale), palette)
+		for i := 0; i < size; i++ {
+			for j := 0; j < size; j++ {
+				b := u[i*size+j]
 				if b != 0 {
 					xx, yy := j*Scale, i*Scale
 					for x := 0; x < Scale; x++ {
@@ -135,8 +137,8 @@ func U(filename string, next func(v [Size * Size]byte, rng *rand.Rand) [Size * S
 				}
 			}
 		}
-		for x := 0; x < int(float64(step)*Size*Scale/float64(Iterations)); x++ {
-			for y := Size*Scale - 10; y < Size*Scale; y++ {
+		for x := 0; x < int(float64(step)*float64(size)*Scale/float64(Iterations)); x++ {
+			for y := size*Scale - 10; y < size*Scale; y++ {
 				verse.Set(x, y, color.RGBA{0, 0, 0xff, 0xff})
 			}
 		}
@@ -159,46 +161,47 @@ func U(filename string, next func(v [Size * Size]byte, rng *rand.Rand) [Size * S
 
 // Capitalistic mode
 func Capitalistic() {
-	U("capitalistic.gif", func(u [Size * Size]byte, rng *rand.Rand) [Size * Size]byte {
+	circle := NewCircle(Size)
+	U("capitalistic.gif", Size, func(u []byte, rng *rand.Rand) []byte {
 		for {
 			ax, ay, bx, by := rng.Intn(Size), rng.Intn(Size), rng.Intn(Size), rng.Intn(Size)
-			v := u
+			v := make([]byte, len(u))
+			copy(v, u)
 			v[ay*Size+ax], v[by*Size+bx] = v[by*Size+bx], v[ay*Size+ax]
-			aBefore := K(u, ax, ay)
-			bBefore := K(u, bx, by)
-			aAfter := K(v, ax, ay)
-			bAfter := K(v, bx, by)
+			aBefore := circle.K(Size, u, ax, ay)
+			bBefore := circle.K(Size, u, bx, by)
+			aAfter := circle.K(Size, v, ax, ay)
+			bAfter := circle.K(Size, v, bx, by)
 			if aAfter < aBefore && bAfter < bBefore {
-				u = v
-				break
+				return v
 			}
 		}
-		return u
 	})
 }
 
 // Communistic model
 func Communistic() {
-	U("communistic.gif", func(u [Size * Size]byte, rng *rand.Rand) [Size * Size]byte {
+	circle := NewCircle(Size)
+	U("communistic.gif", Size, func(u []byte, rng *rand.Rand) []byte {
 		for j := 0; j < 256; j++ {
 			ax, ay, bx, by := rng.Intn(Size), rng.Intn(Size), rng.Intn(Size), rng.Intn(Size)
-			v := u
+			v := make([]byte, len(u))
+			copy(v, u)
 			v[ay*Size+ax], v[by*Size+bx] = v[by*Size+bx], v[ay*Size+ax]
 			before := 0
 			for y := 0; y < Size; y++ {
 				for x := 0; x < Size; x++ {
-					before += K(u, x, y)
+					before += circle.K(Size, u, x, y)
 				}
 			}
 			after := 0
 			for y := 0; y < Size; y++ {
 				for x := 0; x < Size; x++ {
-					after += K(v, x, y)
+					after += circle.K(Size, v, x, y)
 				}
 			}
 			if after < before {
-				u = v
-				break
+				return v
 			}
 		}
 		return u
@@ -267,10 +270,14 @@ func main() {
 					}
 				}
 			}
+			u := make([]byte, 256*256)
 			for _, projection := range projections {
-				img.SetGray(int(255*projection.Data[0]/max[0])+i*256,
-					int(255*projection.Data[1]/max[1])+j*256,
-					color.Gray{Y: 255})
+				u[int(255*projection.Data[1]/max[1])*256+int(255*projection.Data[0]/max[0])] = 255
+			}
+			for y := 0; y < 256; y++ {
+				for x := 0; x < 256; x++ {
+					img.SetGray(x+i*256, y+j*256, color.Gray{Y: u[y*256+x]})
+				}
 			}
 		}
 	}
