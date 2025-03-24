@@ -11,6 +11,7 @@ import (
 	"image"
 	"image/color"
 	"image/gif"
+	"image/png"
 	"io"
 	"math"
 	"math/rand"
@@ -18,6 +19,7 @@ import (
 	"sort"
 
 	"github.com/pointlander/compress"
+	"github.com/pointlander/ka/vector"
 )
 
 const (
@@ -223,6 +225,64 @@ func main() {
 		return
 	}
 
+	rng := rand.New(rand.NewSource(1))
 	iris := Load()
 	fmt.Println(len(iris))
+
+	const (
+		Width  = 512
+		Height = 512
+	)
+	img := image.NewGray(image.Rect(0, 0, Width, Height))
+
+	for i := 0; i < 2; i++ {
+		for j := 0; j < 2; j++ {
+			project := NewMatrix(4, 2)
+			for r := 0; r < project.Rows; r++ {
+				for c := 0; c < project.Cols; c++ {
+					project.Data = append(project.Data, rng.Float32())
+				}
+			}
+			for r := 0; r < project.Rows; r++ {
+				row := project.Data[r*project.Cols : (r+1)*project.Cols]
+				norm := sqrt(vector.Dot(row, row))
+				for k := range row {
+					row[k] /= norm
+				}
+			}
+			projections := make([]Matrix, 0, 8)
+			for _, flower := range iris {
+				point := NewMatrix(4, 1)
+				for _, x := range flower.Measures {
+					point.Data = append(point.Data, float32(x))
+				}
+				projection := project.MulT(point)
+				projections = append(projections, projection)
+			}
+			max := [2]float32{}
+			for _, projection := range projections {
+				for k := range max {
+					if projection.Data[k] > max[k] {
+						max[k] = projection.Data[k]
+					}
+				}
+			}
+			for _, projection := range projections {
+				img.SetGray(int(255*projection.Data[0]/max[0])+i*256,
+					int(255*projection.Data[1]/max[1])+j*256,
+					color.Gray{Y: 255})
+			}
+		}
+	}
+
+	out, err := os.Create("iris.png")
+	if err != nil {
+		panic(err)
+	}
+	defer out.Close()
+
+	err = png.Encode(out, img)
+	if err != nil {
+		panic(err)
+	}
 }
