@@ -238,47 +238,93 @@ func main() {
 	)
 	img := image.NewGray(image.Rect(0, 0, Width, Height))
 
+	done := make(chan bool, 8)
+	process := func(i, j int) {
+		project := NewMatrix(4, 2)
+		for r := 0; r < project.Rows; r++ {
+			for c := 0; c < project.Cols; c++ {
+				project.Data = append(project.Data, rng.Float32())
+			}
+		}
+		for r := 0; r < project.Rows; r++ {
+			row := project.Data[r*project.Cols : (r+1)*project.Cols]
+			norm := sqrt(vector.Dot(row, row))
+			for k := range row {
+				row[k] /= norm
+			}
+		}
+		projections := make([]Matrix, 0, 8)
+		for _, flower := range iris {
+			point := NewMatrix(4, 1)
+			for _, x := range flower.Measures {
+				point.Data = append(point.Data, float32(x))
+			}
+			projection := project.MulT(point)
+			projections = append(projections, projection)
+		}
+		max := [2]float32{}
+		for _, projection := range projections {
+			for k := range max {
+				if projection.Data[k] > max[k] {
+					max[k] = projection.Data[k]
+				}
+			}
+		}
+		u := make([]byte, 256*256)
+		for _, projection := range projections {
+			u[int(255*projection.Data[1]/max[1])*256+int(255*projection.Data[0]/max[0])] = 255
+		}
+		circle := NewCircle(256)
+		type Point struct {
+			X [2]int
+		}
+		white, black := make([]Point, 0, 8), make([]Point, 0, 8)
+		for y := 0; y < 256; y++ {
+			for x := 0; x < 256; x++ {
+				if u[y*256+x] == 0 {
+					black = append(black, Point{
+						X: [2]int{x, y},
+					})
+				} else {
+					white = append(white, Point{
+						X: [2]int{x, y},
+					})
+				}
+			}
+		}
+		for s := 0; s < 256; s++ {
+			for {
+				a, b := rng.Intn(len(white)), rng.Intn(len(black))
+				v := make([]byte, len(u))
+				copy(v, u)
+				ax, ay, bx, by := white[a].X[0], white[a].X[1], black[b].X[0], black[b].X[1]
+				v[ay*256+ax], v[by*256+bx] = v[by*256+bx], v[ay*256+ax]
+				aBefore := circle.K(256, u, ax, ay)
+				bBefore := circle.K(256, u, bx, by)
+				aAfter := circle.K(256, v, ax, ay)
+				bAfter := circle.K(256, v, bx, by)
+				if aAfter < aBefore && bAfter < bBefore {
+					u = v
+					break
+				}
+			}
+			fmt.Println(s)
+		}
+		for y := 0; y < 256; y++ {
+			for x := 0; x < 256; x++ {
+				img.SetGray(x+i*256, y+j*256, color.Gray{Y: u[y*256+x]})
+			}
+		}
+		done <- true
+	}
 	for i := 0; i < 2; i++ {
 		for j := 0; j < 2; j++ {
-			project := NewMatrix(4, 2)
-			for r := 0; r < project.Rows; r++ {
-				for c := 0; c < project.Cols; c++ {
-					project.Data = append(project.Data, rng.Float32())
-				}
-			}
-			for r := 0; r < project.Rows; r++ {
-				row := project.Data[r*project.Cols : (r+1)*project.Cols]
-				norm := sqrt(vector.Dot(row, row))
-				for k := range row {
-					row[k] /= norm
-				}
-			}
-			projections := make([]Matrix, 0, 8)
-			for _, flower := range iris {
-				point := NewMatrix(4, 1)
-				for _, x := range flower.Measures {
-					point.Data = append(point.Data, float32(x))
-				}
-				projection := project.MulT(point)
-				projections = append(projections, projection)
-			}
-			max := [2]float32{}
-			for _, projection := range projections {
-				for k := range max {
-					if projection.Data[k] > max[k] {
-						max[k] = projection.Data[k]
-					}
-				}
-			}
-			u := make([]byte, 256*256)
-			for _, projection := range projections {
-				u[int(255*projection.Data[1]/max[1])*256+int(255*projection.Data[0]/max[0])] = 255
-			}
-			for y := 0; y < 256; y++ {
-				for x := 0; x < 256; x++ {
-					img.SetGray(x+i*256, y+j*256, color.Gray{Y: u[y*256+x]})
-				}
-			}
+			go process(i, j)
+		}
+	}
+	for i := 0; i < 2; i++ {
+		for j := 0; j < 2; j++ {
+			<-done
 		}
 	}
 
