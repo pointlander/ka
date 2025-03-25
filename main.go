@@ -236,7 +236,13 @@ func main() {
 		Width  = 512
 		Height = 512
 	)
-	img := image.NewRGBA(image.Rect(0, 0, Width, Height))
+	start := image.NewRGBA(image.Rect(0, 0, Width, Height))
+	stop := image.NewRGBA(image.Rect(0, 0, Width, Height))
+	var palette = []color.Color{
+		color.RGBA{0xff, 0, 0, 0xff},
+		color.RGBA{0, 0xff, 0, 0xff},
+		color.RGBA{0, 0, 0xff, 0xff},
+	}
 
 	done := make(chan bool, 8)
 	process := func(i, j int) {
@@ -301,8 +307,14 @@ func main() {
 				}
 			}
 		}
+		for _, point := range white {
+			start.Set(point.X[0]+i*256, point.X[1]+j*256, palette[point.Color-253])
+		}
+		for _, point := range black {
+			start.Set(point.X[0]+i*256, point.X[1]+j*256, color.RGBA{0, 0, 0, 0xFF})
+		}
 		circle := NewCircle(256)
-		for s := 0; s < 256; s++ {
+		for s := 0; s < 1024; s++ {
 			for {
 				a, b := rng.Intn(len(white)), rng.Intn(len(black))
 				v := make([]byte, len(u))
@@ -321,16 +333,11 @@ func main() {
 			}
 			fmt.Println(s)
 		}
-		var palette = []color.Color{
-			color.RGBA{0xff, 0, 0, 0xff},
-			color.RGBA{0, 0xff, 0, 0xff},
-			color.RGBA{0, 0, 0xff, 0xff},
-		}
 		for _, point := range white {
-			img.Set(point.X[0]+i*256, point.X[1]+j*256, palette[point.Color-253])
+			stop.Set(point.X[0]+i*256, point.X[1]+j*256, palette[point.Color-253])
 		}
 		for _, point := range black {
-			img.Set(point.X[0]+i*256, point.X[1]+j*256, color.RGBA{0, 0, 0, 0xFF})
+			stop.Set(point.X[0]+i*256, point.X[1]+j*256, color.RGBA{0, 0, 0, 0xFF})
 		}
 		done <- true
 	}
@@ -345,14 +352,28 @@ func main() {
 		}
 	}
 
-	out, err := os.Create("iris.png")
-	if err != nil {
-		panic(err)
-	}
-	defer out.Close()
+	{
+		out, err := os.Create("iris_start.png")
+		if err != nil {
+			panic(err)
+		}
+		defer out.Close()
 
-	err = png.Encode(out, img)
-	if err != nil {
-		panic(err)
+		err = png.Encode(out, start)
+		if err != nil {
+			panic(err)
+		}
+	}
+	{
+		out, err := os.Create("iris_stop.png")
+		if err != nil {
+			panic(err)
+		}
+		defer out.Close()
+
+		err = png.Encode(out, stop)
+		if err != nil {
+			panic(err)
+		}
 	}
 }
