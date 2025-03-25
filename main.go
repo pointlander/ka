@@ -236,7 +236,7 @@ func main() {
 		Width  = 512
 		Height = 512
 	)
-	img := image.NewGray(image.Rect(0, 0, Width, Height))
+	img := image.NewRGBA(image.Rect(0, 0, Width, Height))
 
 	done := make(chan bool, 8)
 	process := func(i, j int) {
@@ -271,27 +271,37 @@ func main() {
 			}
 		}
 		u := make([]byte, 256*256)
-		for _, projection := range projections {
-			u[int(255*projection.Data[1]/max[1])*256+int(255*projection.Data[0]/max[0])] = 255
-		}
-		circle := NewCircle(256)
 		type Point struct {
-			X [2]int
+			X     [2]int
+			Color byte
 		}
 		white, black := make([]Point, 0, 8), make([]Point, 0, 8)
+		for i, projection := range projections {
+			color := byte(255)
+			if iris[i].Label == "Iris-versicolor" {
+				color = 254
+			} else if iris[i].Label == "Iris-virginica" {
+				color = 253
+			}
+			x, y := int(255*projection.Data[0]/max[0]), int(255*projection.Data[1]/max[1])
+			u[y*256+x] = 255
+			white = append(white, Point{
+				X:     [2]int{x, y},
+				Color: color,
+			})
+		}
 		for y := 0; y < 256; y++ {
 			for x := 0; x < 256; x++ {
 				if u[y*256+x] == 0 {
 					black = append(black, Point{
-						X: [2]int{x, y},
+						X:     [2]int{x, y},
+						Color: 0,
 					})
-				} else {
-					white = append(white, Point{
-						X: [2]int{x, y},
-					})
+
 				}
 			}
 		}
+		circle := NewCircle(256)
 		for s := 0; s < 256; s++ {
 			for {
 				a, b := rng.Intn(len(white)), rng.Intn(len(black))
@@ -304,16 +314,23 @@ func main() {
 				aAfter := circle.K(256, v, ax, ay)
 				bAfter := circle.K(256, v, bx, by)
 				if aAfter < aBefore && bAfter < bBefore {
+					white[a].X, black[b].X = black[b].X, white[a].X
 					u = v
 					break
 				}
 			}
 			fmt.Println(s)
 		}
-		for y := 0; y < 256; y++ {
-			for x := 0; x < 256; x++ {
-				img.SetGray(x+i*256, y+j*256, color.Gray{Y: u[y*256+x]})
-			}
+		var palette = []color.Color{
+			color.RGBA{0xff, 0, 0, 0xff},
+			color.RGBA{0, 0xff, 0, 0xff},
+			color.RGBA{0, 0, 0xff, 0xff},
+		}
+		for _, point := range white {
+			img.Set(point.X[0]+i*256, point.X[1]+j*256, palette[point.Color-253])
+		}
+		for _, point := range black {
+			img.Set(point.X[0]+i*256, point.X[1]+j*256, color.RGBA{0, 0, 0, 0xFF})
 		}
 		done <- true
 	}
